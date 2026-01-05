@@ -9,13 +9,29 @@ const PORT = process.env.PORT || 3001;
 app.use(cors({
   origin: "*",
   methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true,
 }));
 app.use(express.json());
 
+// Handle OPTIONS preflight requests
+app.options("/api/chat", (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.status(204).end();
+});
+
 app.post("/api/chat", async (req, res) => {
   try {
+    console.log("Received chat request");
     const { messages }: { messages: UIMessage[] } = req.body;
+
+    if (!messages || !Array.isArray(messages)) {
+      return res.status(400).json({ error: "Invalid request: messages array required" });
+    }
+
+    console.log("Processing messages:", messages.length);
 
     const result = streamText({
       model: openai.responses("gpt-5-nano"),
@@ -32,10 +48,13 @@ app.post("/api/chat", async (req, res) => {
       sendReasoning: true,
     });
 
-    // Set CORS headers
+    // Set CORS headers first
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
 
     // Copy headers from the response
     response.headers.forEach((value, key) => {
@@ -45,7 +64,6 @@ app.post("/api/chat", async (req, res) => {
     // Stream the response
     if (response.body) {
       const reader = response.body.getReader();
-      const decoder = new TextDecoder();
       
       const pump = async () => {
         try {
@@ -56,6 +74,10 @@ app.post("/api/chat", async (req, res) => {
               break;
             }
             res.write(value);
+            // Flush the response to ensure data is sent immediately
+            if (typeof res.flush === 'function') {
+              res.flush();
+            }
           }
         } catch (error) {
           console.error("Streaming error:", error);
@@ -68,18 +90,33 @@ app.post("/api/chat", async (req, res) => {
       };
       await pump();
     } else {
-      res.end();
+      console.error("Response body is null");
+      res.status(500).json({ error: "No response body" });
     }
   } catch (error) {
     console.error("Error processing chat request:", error);
     if (!res.headersSent) {
-      res.status(500).json({ error: "Internal server error" });
+      res.status(500).json({ 
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : String(error)
+      });
     }
   }
 });
 
 app.get("/health", (req, res) => {
-  res.json({ status: "ok" });
+  res.json({ 
+    status: "ok",
+    hasOpenAIKey: !!process.env.OPENAI_API_KEY,
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.get("/test", (req, res) => {
+  res.json({ 
+    message: "Backend is working",
+    apiUrl: process.env.OPENAI_API_KEY ? "OpenAI key is set" : "OpenAI key is NOT set"
+  });
 });
 
 app.listen(PORT, () => {
