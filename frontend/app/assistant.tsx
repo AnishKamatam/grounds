@@ -13,7 +13,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { ThreadListSidebar } from "@/components/assistant-ui/threadlist-sidebar";
-import { SignedIn, useAuth } from "@clerk/nextjs";
+import { SignedIn, useAuth } from "@clerk/clerk-react";
 import { useMemo } from "react";
 
 export const Assistant = () => {

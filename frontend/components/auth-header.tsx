@@ -1,12 +1,12 @@
 "use client";
 
-import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/nextjs";
+import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/clerk-react";
 
 export function AuthHeader() {
   return (
     <header className="flex h-16 shrink-0 items-center justify-end gap-4 border-b px-4">
       <SignedOut>
-        <SignInButton />
+        <SignInButton mode="modal" />
       </SignedOut>
       <SignedIn>
         <UserButton />
