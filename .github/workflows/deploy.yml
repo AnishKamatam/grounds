@@ -32,9 +32,25 @@ jobs:
         working-directory: ./frontend
         run: npm ci
 
+      - name: Check API URL secret
+        run: |
+          API_URL="${{ secrets.NEXT_PUBLIC_API_URL }}"
+          if [ -z "$API_URL" ]; then
+            echo "ERROR: NEXT_PUBLIC_API_URL secret is not set!"
+            echo "Please set it in Settings > Secrets and variables > Actions"
+            exit 1
+          else
+            echo "API URL is set: $API_URL"
+            echo "API URL length: ${#API_URL}"
+          fi
+
       - name: Build
         working-directory: ./frontend
-        run: npm run build
+        run: |
+          echo "Building with NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}"
+          npm run build
+          echo "Build completed. Checking if API URL is embedded..."
+          grep -r "grounds-uf32.onrender.com" out/ || echo "Warning: API URL not found in build output"
         env:
           NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
 
