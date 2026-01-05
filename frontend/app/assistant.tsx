@@ -17,7 +17,12 @@ import { SignedIn, useAuth } from "@clerk/clerk-react";
 import { useMemo } from "react";
 
 export const Assistant = () => {
-  const { getToken } = useAuth();
+  const { getToken, isLoaded } = useAuth();
+  
+  // Wait for Clerk to load before initializing Assistant Cloud
+  if (!isLoaded) {
+    return <div>Loading...</div>;
+  }
   
   // Next.js replaces this at build time - if undefined, use fallback
   const apiUrl = process.env.NEXT_PUBLIC_API_URL;
