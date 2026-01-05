@@ -74,10 +74,6 @@ app.post("/api/chat", async (req, res) => {
               break;
             }
             res.write(value);
-            // Flush the response to ensure data is sent immediately
-            if (typeof res.flush === 'function') {
-              res.flush();
-            }
           }
         } catch (error) {
           console.error("Streaming error:", error);
