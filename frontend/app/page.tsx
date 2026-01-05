@@ -1,5 +1,18 @@
+"use client";
+
 import { Assistant } from "./assistant";
+import { LandingPage } from "@/components/landing-page";
+import { SignedIn, SignedOut } from "@clerk/clerk-react";
 
 export default function Home() {
-  return <Assistant />;
+  return (
+    <>
+      <SignedOut>
+        <LandingPage />
+      </SignedOut>
+      <SignedIn>
+        <Assistant />
+      </SignedIn>
+    </>
+  );
 }

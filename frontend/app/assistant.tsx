@@ -13,7 +13,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { ThreadListSidebar } from "@/components/assistant-ui/threadlist-sidebar";
-import { SignedIn, useAuth } from "@clerk/clerk-react";
+import { useAuth, UserButton } from "@clerk/clerk-react";
 import { useMemo } from "react";
 
 export const Assistant = () => {
@@ -87,22 +87,21 @@ export const Assistant = () => {
   }
 
   return (
-    <SignedIn>
-      <AssistantRuntimeProvider runtime={runtime}>
-        <SidebarProvider>
-          <div className="flex h-dvh w-full pr-0.5">
-            <ThreadListSidebar />
+    <AssistantRuntimeProvider runtime={runtime}>
+      <SidebarProvider>
+        <div className="flex h-dvh w-full pr-0.5">
+          <ThreadListSidebar />
             <SidebarInset>
-              <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
+              <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b px-4">
                 <SidebarTrigger />
+                <UserButton afterSignOutUrl="/" />
               </header>
-              <div className="flex-1 overflow-hidden">
-                <Thread />
-              </div>
-            </SidebarInset>
-          </div>
-        </SidebarProvider>
-      </AssistantRuntimeProvider>
-    </SignedIn>
+            <div className="flex-1 overflow-hidden">
+              <Thread />
+            </div>
+          </SidebarInset>
+        </div>
+      </SidebarProvider>
+    </AssistantRuntimeProvider>
   );
 };

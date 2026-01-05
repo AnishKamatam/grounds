@@ -9,9 +9,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Use a placeholder key if not set (will fail at runtime but allows build to succeed)
   const key = publishableKey || "pk_test_placeholder";
   
+  // Get base path for production (GitHub Pages)
+  const basePath = process.env.NODE_ENV === 'production' ? '/grounds' : '';
+  const afterSignOutUrl = `${basePath}/`;
+  
   return (
     <ClerkProvider
       publishableKey={key}
+      afterSignOutUrl={afterSignOutUrl}
     >
       {children}
     </ClerkProvider>
