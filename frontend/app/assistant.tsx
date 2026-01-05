@@ -14,9 +14,11 @@ import {
 import { ThreadListSidebar } from "@/components/assistant-ui/threadlist-sidebar";
 
 export const Assistant = () => {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+  
   const runtime = useChatRuntime({
     transport: new AssistantChatTransport({
-      api: "/api/chat",
+      api: `${apiUrl}/api/chat`,
     }),
   });
 
