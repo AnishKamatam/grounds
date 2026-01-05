@@ -49,8 +49,15 @@ jobs:
         run: |
           echo "Building with NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}"
           npm run build
-          echo "Build completed. Checking if API URL is embedded..."
-          grep -r "grounds-uf32.onrender.com" out/ || echo "Warning: API URL not found in build output"
+          echo "Build completed. Verifying API URL is embedded..."
+          if grep -r "grounds-uf32.onrender.com" out/ > /dev/null 2>&1; then
+            echo "✓ API URL found in build output"
+          elif grep -r "localhost:3001" out/ > /dev/null 2>&1; then
+            echo "✗ ERROR: localhost:3001 found in build - secret may not be set correctly"
+            exit 1
+          else
+            echo "⚠ Could not verify API URL in build output"
+          fi
         env:
           NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
 

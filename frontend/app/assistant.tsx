@@ -14,11 +14,25 @@ import {
 import { ThreadListSidebar } from "@/components/assistant-ui/threadlist-sidebar";
 
 export const Assistant = () => {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+  // Next.js replaces this at build time - if undefined, use fallback
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+  const fallbackUrl = "http://localhost:3001";
+  const finalApiUrl = apiUrl && apiUrl.trim() ? apiUrl.trim() : fallbackUrl;
+  
+  // Ensure we have a full URL (not relative)
+  const fullApiUrl = finalApiUrl.startsWith('http') 
+    ? `${finalApiUrl}/api/chat` 
+    : `${fallbackUrl}/api/chat`;
+  
+  // Debug log - check browser console to see what URL is being used
+  if (typeof window !== 'undefined') {
+    console.log('API URL being used:', fullApiUrl);
+    console.log('NEXT_PUBLIC_API_URL env var:', apiUrl || 'NOT SET');
+  }
   
   const runtime = useChatRuntime({
     transport: new AssistantChatTransport({
-      api: `${apiUrl}/api/chat`,
+      api: fullApiUrl,
     }),
   });
 
