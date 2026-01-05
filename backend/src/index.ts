@@ -39,7 +39,7 @@ app.post("/api/chat", async (req, res) => {
       providerOptions: {
         openai: {
           reasoningEffort: "low",
-          reasoningSummary: "auto",
+          // reasoningSummary: "auto", // Requires organization verification
         },
       },
     });
@@ -48,30 +48,42 @@ app.post("/api/chat", async (req, res) => {
       sendReasoning: true,
     });
 
-    // Set CORS headers first
+    // Set status code
+    res.status(response.status);
+
+    // Copy headers from the response first (this sets Content-Type correctly)
+    response.headers.forEach((value, key) => {
+      // Don't override CORS headers
+      if (key.toLowerCase() !== 'access-control-allow-origin') {
+        res.setHeader(key, value);
+      }
+    });
+
+    // Set CORS headers (after copying response headers to ensure they're not overridden)
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-    res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
 
-    // Copy headers from the response
-    response.headers.forEach((value, key) => {
-      res.setHeader(key, value);
-    });
-
     // Stream the response
     if (response.body) {
+      console.log("Starting to stream response");
       const reader = response.body.getReader();
+      let chunkCount = 0;
       
       const pump = async () => {
         try {
           while (true) {
             const { done, value } = await reader.read();
             if (done) {
+              console.log(`Streaming complete. Sent ${chunkCount} chunks`);
               res.end();
               break;
+            }
+            chunkCount++;
+            if (chunkCount <= 3) {
+              console.log(`Sending chunk ${chunkCount}, size: ${value.length} bytes`);
             }
             res.write(value);
           }
