@@ -19,11 +19,6 @@ import { useMemo } from "react";
 export const Assistant = () => {
   const { getToken, isLoaded } = useAuth();
   
-  // Wait for Clerk to load before initializing Assistant Cloud
-  if (!isLoaded) {
-    return <div>Loading...</div>;
-  }
-  
   // Next.js replaces this at build time - if undefined, use fallback
   const apiUrl = process.env.NEXT_PUBLIC_API_URL;
   const fallbackUrl = "http://localhost:3001";
@@ -35,7 +30,13 @@ export const Assistant = () => {
     : `${fallbackUrl}/api/chat`;
   
   // Assistant Cloud configuration - use Clerk JWT token directly
+  // Always call useMemo (hooks must be called unconditionally)
   const assistantCloud = useMemo(() => {
+    if (!isLoaded || !getToken) {
+      // Return a placeholder that will be replaced when Clerk loads
+      return null;
+    }
+    
     return new AssistantCloud({
       baseUrl: process.env.NEXT_PUBLIC_ASSISTANT_BASE_URL || "https://proj-0lsbf7oe3rkx.assistant-api.com",
       authToken: async () => {
@@ -70,14 +71,20 @@ export const Assistant = () => {
         }
       },
     });
-  }, [getToken]);
+  }, [getToken, isLoaded]);
   
+  // Always call useChatRuntime hook (hooks must be called unconditionally)
   const runtime = useChatRuntime({
     transport: new AssistantChatTransport({
       api: fullApiUrl,
     }),
-    cloud: assistantCloud,
+    cloud: assistantCloud || undefined, // Pass undefined if not loaded yet
   });
+  
+  // Wait for Clerk to load before rendering
+  if (!isLoaded || !assistantCloud) {
+    return <div>Loading...</div>;
+  }
 
   return (
     <SignedIn>
