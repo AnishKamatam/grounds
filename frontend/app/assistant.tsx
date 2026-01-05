@@ -94,7 +94,13 @@ export const Assistant = () => {
             <SidebarInset>
               <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b px-4">
                 <SidebarTrigger />
-                <UserButton afterSignOutUrl="/" />
+                <UserButton 
+                  afterSignOutUrl={
+                    typeof window !== 'undefined' && window.location.pathname.startsWith('/grounds')
+                      ? '/grounds/'
+                      : '/'
+                  } 
+                />
               </header>
             <div className="flex-1 overflow-hidden">
               <Thread />

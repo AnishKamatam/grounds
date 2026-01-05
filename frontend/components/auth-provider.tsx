@@ -10,7 +10,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const key = publishableKey || "pk_test_placeholder";
   
   // Get base path for production (GitHub Pages)
-  const basePath = process.env.NODE_ENV === 'production' ? '/grounds' : '';
+  // Check at runtime since static export doesn't have NODE_ENV at build time
+  const getBasePath = () => {
+    if (typeof window === 'undefined') return '';
+    return window.location.pathname.startsWith('/grounds') ? '/grounds' : '';
+  };
+  
+  const basePath = getBasePath();
   const afterSignOutUrl = `${basePath}/`;
   
   return (
