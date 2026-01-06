@@ -41,29 +41,53 @@ app.post("/api/chat", async (req: Request, res: Response) => {
     console.log(`Received ${messages.length} messages`);
 
     // Filter out empty messages - be more lenient with content checking
+    // Assistant UI uses "parts" array format
     const validMessages = messages.filter((msg, index) => {
       if (!msg || typeof msg !== "object") {
         console.warn(`Message at index ${index} is invalid:`, msg);
         return false;
       }
       
-      const content = (msg as any).content;
       const role = (msg as any).role || msg.role;
+      const parts = (msg as any).parts;
+      const content = (msg as any).content;
       
-      // Allow messages with empty content if they have a role
+      // Must have a role
       if (!role) {
         console.warn(`Message at index ${index} has no role:`, msg);
         return false;
       }
       
-      // If content exists, check if it's non-empty
-      if (content !== undefined && content !== null) {
-        if (typeof content === "string" && !content.trim()) {
-          return false; // Empty string content
+      // Check for parts array (Assistant UI format)
+      if (parts && Array.isArray(parts) && parts.length > 0) {
+        // Check if any part has text content
+        const hasText = parts.some((part: any) => {
+          if (part?.type === "text" && part.text && part.text.trim()) {
+            return true;
+          }
+          if (typeof part === "string" && part.trim()) {
+            return true;
+          }
+          return false;
+        });
+        if (hasText) {
+          return true;
         }
       }
       
-      return true;
+      // Check for direct content field
+      if (content !== undefined && content !== null) {
+        if (typeof content === "string" && content.trim()) {
+          return true;
+        }
+        if (Array.isArray(content) && content.length > 0) {
+          return true;
+        }
+      }
+      
+      // If no content found, reject the message
+      console.warn(`Message at index ${index} has no valid content:`, { role, hasParts: !!parts, hasContent: !!content });
+      return false;
     });
 
     console.log(`Filtered to ${validMessages.length} valid messages`);
@@ -93,28 +117,52 @@ app.post("/api/chat", async (req: Request, res: Response) => {
     res.status(200);
 
     // Convert UI messages to LangChain format
+    // Assistant UI sends messages with a "parts" array format
     const langchainMessages = convertToLangChainMessages(
       validMessages.map((msg) => {
-        const content = (msg as any).content;
         const role = (msg as any).role || msg.role;
+        const parts = (msg as any).parts;
+        const content = (msg as any).content;
         
         // Handle different content formats
         let contentStr: string;
-        if (content === undefined || content === null) {
-          contentStr = ""; // Allow empty content for system messages or placeholders
-        } else if (typeof content === "string") {
-          contentStr = content;
-        } else if (Array.isArray(content)) {
-          // Handle content arrays (like in Assistant UI format)
-          contentStr = content
-            .map((c: any) => {
-              if (typeof c === "string") return c;
-              if (c?.type === "text" && c.text) return c.text;
-              return JSON.stringify(c);
+        
+        // Check for parts array first (Assistant UI format)
+        if (parts && Array.isArray(parts)) {
+          contentStr = parts
+            .map((part: any) => {
+              if (part?.type === "text" && part.text) {
+                return part.text;
+              }
+              if (typeof part === "string") {
+                return part;
+              }
+              if (part?.text) {
+                return part.text;
+              }
+              return "";
             })
+            .filter((s: string) => s) // Remove empty strings
             .join("");
+        } else if (content !== undefined && content !== null) {
+          // Handle direct content field
+          if (typeof content === "string") {
+            contentStr = content;
+          } else if (Array.isArray(content)) {
+            contentStr = content
+              .map((c: any) => {
+                if (typeof c === "string") return c;
+                if (c?.type === "text" && c.text) return c.text;
+                if (c?.text) return c.text;
+                return JSON.stringify(c);
+              })
+              .filter((s: string) => s)
+              .join("");
+          } else {
+            contentStr = JSON.stringify(content);
+          }
         } else {
-          contentStr = JSON.stringify(content);
+          contentStr = ""; // Allow empty content for system messages or placeholders
         }
         
         return {
