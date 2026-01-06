@@ -3,6 +3,13 @@ import { StateGraph, END, START, Annotation } from "@langchain/langgraph";
 import { HumanMessage, AIMessage, BaseMessage } from "@langchain/core/messages";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 
+// Initialize the OpenAI model with streaming enabled
+const model = new ChatOpenAI({
+  modelName: "gpt-4o-mini",
+  temperature: 0.7,
+  streaming: true,
+});
+
 // Define the state annotation for our graph
 const GraphStateAnnotation = Annotation.Root({
   messages: Annotation<BaseMessage[]>({
@@ -15,18 +22,16 @@ type GraphState = typeof GraphStateAnnotation.State;
 
 /**
  * Creates a LangGraph agent that processes chat messages
+ * This uses LangGraph for orchestration but we'll stream directly from the model
  */
 export function createChatGraph() {
-  // Initialize the OpenAI model with streaming enabled
-  const model = new ChatOpenAI({
-    modelName: "gpt-4o-mini",
-    temperature: 0.7,
-    streaming: true,
-  });
-
   // Node: Process the user message and generate AI response
   async function processMessage(state: GraphState): Promise<Partial<GraphState>> {
     const { messages } = state;
+    
+    if (!messages || messages.length === 0) {
+      throw new Error("No messages provided to process");
+    }
     
     // Create a prompt template with system message and conversation history
     const promptMessages: Array<[string, string]> = [
@@ -36,10 +41,20 @@ export function createChatGraph() {
     // Add conversation messages
     for (const msg of messages) {
       if (msg instanceof HumanMessage) {
-        promptMessages.push(["human", typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content)]);
+        const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
+        if (content.trim()) {
+          promptMessages.push(["human", content]);
+        }
       } else if (msg instanceof AIMessage) {
-        promptMessages.push(["assistant", typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content)]);
+        const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
+        if (content.trim()) {
+          promptMessages.push(["assistant", content]);
+        }
       }
+    }
+
+    if (promptMessages.length <= 1) {
+      throw new Error("No valid conversation messages found");
     }
 
     const prompt = ChatPromptTemplate.fromMessages(promptMessages);
@@ -49,6 +64,10 @@ export function createChatGraph() {
     
     // Generate response
     const response = await chain.invoke({});
+
+    if (!response || !response.content) {
+      throw new Error("Empty response from model");
+    }
 
     return {
       messages: [response],
@@ -62,6 +81,45 @@ export function createChatGraph() {
     .addEdge("process", END);
 
   return workflow.compile();
+}
+
+/**
+ * Prepares messages for streaming using LangGraph orchestration
+ * Returns the prompt chain ready for streaming
+ */
+export function prepareStreamingChain(messages: BaseMessage[]) {
+  if (!messages || messages.length === 0) {
+    throw new Error("No messages provided");
+  }
+  
+  // Create a prompt template with system message and conversation history
+  const promptMessages: Array<[string, string]> = [
+    ["system", "You are a helpful AI assistant."],
+  ];
+  
+  // Add conversation messages
+  for (const msg of messages) {
+    if (msg instanceof HumanMessage) {
+      const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
+      if (content.trim()) {
+        promptMessages.push(["human", content]);
+      }
+    } else if (msg instanceof AIMessage) {
+      const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
+      if (content.trim()) {
+        promptMessages.push(["assistant", content]);
+      }
+    }
+  }
+
+  if (promptMessages.length <= 1) {
+    throw new Error("No valid conversation messages found");
+  }
+
+  const prompt = ChatPromptTemplate.fromMessages(promptMessages);
+  
+  // Create the chain ready for streaming
+  return prompt.pipe(model);
 }
 
 /**
