@@ -184,7 +184,13 @@ app.post("/api/chat", async (req: Request, res: Response) => {
     const writeSSE = (data: object) => {
       try {
         const json = JSON.stringify(data);
-        res.write(`0:${json}\n`);
+        const sseLine = `0:${json}\n`;
+        console.log(`Sending SSE: ${sseLine.substring(0, 200)}...`);
+        res.write(sseLine);
+        // Ensure data is flushed
+        if (typeof (res as any).flush === 'function') {
+          (res as any).flush();
+        }
       } catch (err) {
         console.error("Error writing SSE:", err);
       }
@@ -242,10 +248,17 @@ app.post("/api/chat", async (req: Request, res: Response) => {
       }
       
       // Send the complete message as a single text delta
+      // Assistant UI expects the delta to be the text content
+      console.log(`Sending text-delta with ${fullResponse.length} characters`);
+      console.log(`First 100 chars: ${fullResponse.substring(0, 100)}`);
+      
+      // Send the text delta - this is what Assistant UI reads
       writeSSE({
         type: "text-delta",
         delta: fullResponse,
       });
+      
+      console.log("Text delta sent successfully");
       
     } catch (invokeError) {
       console.error("Error invoking chain:", invokeError);
@@ -255,6 +268,7 @@ app.post("/api/chat", async (req: Request, res: Response) => {
     }
 
     // Send message completion
+    console.log("Sending message-delta");
     writeSSE({
       type: "message-delta",
       delta: {
@@ -263,6 +277,7 @@ app.post("/api/chat", async (req: Request, res: Response) => {
     });
 
     // Send final message
+    console.log("Sending final message");
     writeSSE({
       type: "message",
       message: {
@@ -273,10 +288,12 @@ app.post("/api/chat", async (req: Request, res: Response) => {
     });
 
     // Send stop event
+    console.log("Sending message-stop");
     writeSSE({
       type: "message-stop",
     });
 
+    console.log("Closing response");
     res.end();
   } catch (error) {
     console.error("Error processing chat request:", error);
