@@ -1,7 +1,7 @@
-import express from "express";
+import express, { type Request, type Response } from "express";
 import cors from "cors";
-import { openai } from "@ai-sdk/openai";
-import { streamText, convertToModelMessages, type UIMessage } from "ai";
+import type { UIMessage } from "ai";
+import { createChatGraph, convertToLangChainMessages } from "./graph.js";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -14,14 +14,14 @@ app.use(cors({
 }));
 app.use(express.json());
 
-app.options("/api/chat", (req, res) => {
+app.options("/api/chat", (req: Request, res: Response) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   res.status(204).end();
 });
 
-app.post("/api/chat", async (req, res) => {
+app.post("/api/chat", async (req: Request, res: Response) => {
   try {
     const { messages }: { messages: UIMessage[] } = req.body;
 
@@ -29,60 +29,103 @@ app.post("/api/chat", async (req, res) => {
       return res.status(400).json({ error: "Invalid request: messages array required" });
     }
 
-    const result = streamText({
-      model: openai.responses("gpt-5-nano"),
-      messages: convertToModelMessages(messages),
-      providerOptions: {
-        openai: {
-          reasoningEffort: "low",
-        },
-      },
-    });
-
-    const response = result.toUIMessageStreamResponse({
-      sendReasoning: true,
-    });
-
-    res.status(response.status);
-
-    response.headers.forEach((value, key) => {
-      if (key.toLowerCase() !== 'access-control-allow-origin') {
-        res.setHeader(key, value);
-      }
-    });
-
+    // Set up streaming headers (matching AI SDK format)
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
     res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.status(200);
 
-    if (response.body) {
-      const reader = response.body.getReader();
-      
-      const pump = async () => {
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) {
-              res.end();
-              break;
-            }
-            res.write(value);
-          }
-        } catch (error) {
-          console.error("Streaming error:", error);
-          if (!res.headersSent) {
-            res.status(500).json({ error: "Streaming error" });
-          } else {
-            res.end();
-          }
+    // Convert UI messages to LangChain format
+    // UIMessage has a structure like { role: string, content: string | Array<...> }
+    const langchainMessages = convertToLangChainMessages(
+      messages.map((msg) => {
+        const content = (msg as any).content;
+        return {
+          role: msg.role,
+          content: typeof content === "string" ? content : JSON.stringify(content),
+        };
+      })
+    );
+
+    // Create the graph
+    const graph = createChatGraph();
+
+    // Stream events from LangGraph
+    const stream = await graph.streamEvents(
+      { messages: langchainMessages },
+      { version: "v2" }
+    );
+
+    let fullResponse = "";
+    let messageId = `msg_${Date.now()}`;
+
+    // Helper function to write SSE data
+    const writeSSE = (data: object) => {
+      const json = JSON.stringify(data);
+      res.write(`0:${json}\n`);
+    };
+
+    // Send initial message start
+    writeSSE({
+      type: "message-start",
+      message: {
+        id: messageId,
+        role: "assistant",
+        content: "",
+      },
+    });
+
+    // Process stream events
+    for await (const event of stream) {
+      // Look for LLM token stream events
+      if (event.event === "on_chat_model_stream") {
+        const chunk = event.data?.chunk;
+        if (chunk?.content) {
+          const content = String(chunk.content);
+          fullResponse += content;
+          
+          // Send text delta - properly escape the content
+          writeSSE({
+            type: "text-delta",
+            delta: content,
+          });
         }
-      };
-      await pump();
-    } else {
-      res.status(500).json({ error: "No response body" });
+      }
+      
+      // Handle model end event
+      if (event.event === "on_chat_model_end") {
+        // The stream will naturally end
+      }
     }
+
+    // Send message completion
+    writeSSE({
+      type: "message-delta",
+      delta: {
+        content: "",
+      },
+    });
+
+    // Send final message
+    writeSSE({
+      type: "message",
+      message: {
+        id: messageId,
+        role: "assistant",
+        content: fullResponse,
+      },
+    });
+
+    // Send stop event
+    writeSSE({
+      type: "message-stop",
+    });
+
+    res.end();
   } catch (error) {
     console.error("Error processing chat request:", error);
     if (!res.headersSent) {
@@ -90,14 +133,19 @@ app.post("/api/chat", async (req, res) => {
         error: "Internal server error",
         message: error instanceof Error ? error.message : String(error)
       });
+    } else {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      res.write(`0:${JSON.stringify({ type: "error", error: errorMsg })}\n`);
+      res.end();
     }
   }
 });
 
-app.get("/health", (req, res) => {
+app.get("/health", (req: Request, res: Response) => {
   res.json({ 
     status: "ok",
     hasOpenAIKey: !!process.env.OPENAI_API_KEY,
+    usingLangGraph: true,
     timestamp: new Date().toISOString()
   });
 });
