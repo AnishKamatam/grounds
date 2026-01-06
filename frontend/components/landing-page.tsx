@@ -8,7 +8,6 @@ import DotGrid from "@/components/dot-grid";
 export function LandingPage() {
   return (
     <div className="relative flex min-h-screen flex-col bg-gray-100 overflow-hidden">
-      {/* Dot Grid Background */}
       <DotGrid
         dotSize={2}
         gap={24}
@@ -18,23 +17,16 @@ export function LandingPage() {
         className="absolute inset-0"
       />
 
-      {/* Content */}
       <div className="relative z-10 flex min-h-screen flex-col">
-        {/* Header */}
         <header className="flex h-16 items-center justify-between bg-transparent px-20">
-          {/* Logo */}
           <Link href="/" className="flex items-center gap-2">
             <Brain className="size-6 text-black" />
             <span className="text-xl font-semibold">Grounds</span>
           </Link>
-
-          {/* Auth buttons */}
           <AuthHeader />
         </header>
 
-        {/* Main content */}
         <main className="flex flex-1 items-start justify-center gap-8 px-6 pt-40">
-          {/* Text content */}
           <div className="max-w-2xl">
             <h1 className="mb-4 text-left text-5xl font-normal tracking-tight sm:text-7xl font-[var(--font-inter)]">
               AI agents for deep understanding
@@ -43,8 +35,6 @@ export function LandingPage() {
               A research-grade platform for building agents that reason over documents, concepts, and sources.
             </p>
           </div>
-          
-          {/* Gray box on the right */}
           <div className="h-96 w-full max-w-2xl rounded-lg bg-gray-300"></div>
         </main>
       </div>

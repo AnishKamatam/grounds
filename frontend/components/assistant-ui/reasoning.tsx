@@ -28,10 +28,7 @@ import { cn } from "@/lib/utils";
 const ANIMATION_DURATION = 200;
 const SHIMMER_DURATION = 1000;
 
-/**
- * Root collapsible container that manages open/closed state and scroll lock.
- * Provides animation timing via CSS variable and prevents scroll jumps on collapse.
- */
+// Root collapsible container that manages open/closed state and scroll lock
 const ReasoningRoot: FC<
   PropsWithChildren<{
     className?: string;
@@ -71,10 +68,7 @@ const ReasoningRoot: FC<
 
 ReasoningRoot.displayName = "ReasoningRoot";
 
-/**
- * Gradient overlay that softens the bottom edge during expand/collapse animations.
- * Animation: Fades out with delay when opening and fades back in when closing.
- */
+// Gradient overlay that softens the bottom edge during expand/collapse animations
 const GradientFade: FC<{ className?: string }> = ({ className }) => (
   <div
     className={cn(
@@ -92,10 +86,7 @@ const GradientFade: FC<{ className?: string }> = ({ className }) => (
   />
 );
 
-/**
- * Trigger button for the Reasoning collapsible.
- * Composed of icons, label, and text shimmer animation when reasoning is being streamed.
- */
+// Trigger button for the Reasoning collapsible
 const ReasoningTrigger: FC<{ active: boolean; className?: string }> = ({
   active,
   className,
@@ -134,11 +125,7 @@ const ReasoningTrigger: FC<{ active: boolean; className?: string }> = ({
   </CollapsibleTrigger>
 );
 
-/**
- * Collapsible content wrapper that handles height expand/collapse animation.
- * Animation: Height animates up (collapse) and down (expand).
- * Also provides group context for child animations via data-state attributes.
- */
+// Collapsible content wrapper that handles height expand/collapse animation
 const ReasoningContent: FC<
   PropsWithChildren<{
     className?: string;
@@ -166,11 +153,7 @@ const ReasoningContent: FC<
 
 ReasoningContent.displayName = "ReasoningContent";
 
-/**
- * Text content wrapper that animates the reasoning text visibility.
- * Animation: Slides in from top + fades in when opening, reverses when closing.
- * Reacts to parent ReasoningContent's data-state via Radix group selectors.
- */
+// Text content wrapper that animates the reasoning text visibility
 const ReasoningText: FC<
   PropsWithChildren<{
     className?: string;
@@ -198,48 +181,16 @@ const ReasoningText: FC<
 
 ReasoningText.displayName = "ReasoningText";
 
-/**
- * Renders a single reasoning part's text with markdown support.
- * Consecutive reasoning parts are automatically grouped by ReasoningGroup.
- *
- * Pass Reasoning to MessagePrimitive.Parts in thread.tsx
- *
- * @example:
- * ```tsx
- * <MessagePrimitive.Parts
- *   components={{
- *     Reasoning: Reasoning,
- *     ReasoningGroup: ReasoningGroup,
- *   }}
- * />
- * ```
- */
+// Renders a single reasoning part's text with markdown support
 const ReasoningImpl: ReasoningMessagePartComponent = () => <MarkdownText />;
 
-/**
- * Collapsible wrapper that groups consecutive reasoning parts together.
- *  Includes scroll lock to prevent page jumps during collapse animation.
- *
- *  Pass ReasoningGroup to MessagePrimitive.Parts in thread.tsx
- *
- * @example:
- * ```tsx
- * <MessagePrimitive.Parts
- *   components={{
- *     Reasoning: Reasoning,
- *     ReasoningGroup: ReasoningGroup,
- *   }}
- * />
- * ```
- */
+// Collapsible wrapper that groups consecutive reasoning parts together
 const ReasoningGroupImpl: ReasoningGroupComponent = ({
   children,
   startIndex,
   endIndex,
 }) => {
-  /**
-   * Detects if reasoning is currently streaming within this group's range.
-   */
+  // Detects if reasoning is currently streaming within this group's range
   const isReasoningStreaming = useAssistantState(({ message }) => {
     if (message.status?.type !== "running") return false;
     const lastIndex = message.parts.length - 1;
