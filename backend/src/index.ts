@@ -106,7 +106,7 @@ app.post("/api/chat", async (req: Request, res: Response) => {
       });
     }
 
-    // Set up streaming headers (matching AI SDK format)
+    // Set up response headers
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -174,11 +174,11 @@ app.post("/api/chat", async (req: Request, res: Response) => {
 
     console.log(`Processing ${langchainMessages.length} messages`);
 
-    // Prepare the streaming chain using LangGraph orchestration
+    // Prepare the chain using LangGraph orchestration
     const chain = prepareStreamingChain(langchainMessages);
 
-    let fullResponse = "";
     let messageId = `msg_${Date.now()}`;
+    let fullResponse = "";
 
     // Helper function to write SSE data
     const writeSSE = (data: object) => {
@@ -201,33 +201,57 @@ app.post("/api/chat", async (req: Request, res: Response) => {
     });
 
     try {
-      // Stream directly from the model
-      const stream = await chain.stream({});
+      // Get the full response instead of streaming
+      console.log("Invoking chain to get full response...");
+      const response = await chain.invoke({});
       
-      // Process stream chunks
-      // LangChain streams AIMessageChunk objects
-      for await (const chunk of stream) {
-        if (chunk) {
-          // Handle both AIMessageChunk and plain objects
-          const content = typeof chunk === "string" 
-            ? chunk 
-            : (chunk as any).content || (chunk as any).text || "";
-          
-          if (content) {
-            const contentStr = String(content);
-            fullResponse += contentStr;
-            
-            // Send text delta
-            writeSSE({
-              type: "text-delta",
-              delta: contentStr,
-            });
+      console.log("Response received:", response ? "yes" : "no");
+      
+      // Extract content from the response
+      if (response) {
+        if (typeof response === "string") {
+          fullResponse = response;
+        } else if ((response as any).content !== undefined) {
+          const content = (response as any).content;
+          if (typeof content === "string") {
+            fullResponse = content;
+          } else if (Array.isArray(content)) {
+            fullResponse = content
+              .map((c: any) => {
+                if (typeof c === "string") return c;
+                if (c?.type === "text" && c.text) return c.text;
+                return "";
+              })
+              .filter((s: string) => s)
+              .join("");
+          } else {
+            fullResponse = String(content);
           }
+        } else if ((response as any).text !== undefined) {
+          fullResponse = String((response as any).text);
+        } else {
+          fullResponse = JSON.stringify(response);
         }
       }
-    } catch (streamError) {
-      console.error("Streaming error:", streamError);
-      throw streamError;
+      
+      console.log(`Full response length: ${fullResponse.length}`);
+      
+      if (!fullResponse) {
+        console.warn("Empty response received");
+        fullResponse = "I apologize, but I didn't receive a response from the model.";
+      }
+      
+      // Send the complete message as a single text delta
+      writeSSE({
+        type: "text-delta",
+        delta: fullResponse,
+      });
+      
+    } catch (invokeError) {
+      console.error("Error invoking chain:", invokeError);
+      const errorStack = invokeError instanceof Error ? invokeError.stack : String(invokeError);
+      console.error("Invoke error stack:", errorStack);
+      throw invokeError;
     }
 
     // Send message completion
