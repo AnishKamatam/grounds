@@ -181,10 +181,12 @@ app.post("/api/chat", async (req: Request, res: Response) => {
     let fullResponse = "";
 
     // Helper function to write SSE data
+    // SSE format requires: "data: <json>\n\n" or "0:<json>\n\n"
     const writeSSE = (data: object) => {
       try {
         const json = JSON.stringify(data);
-        const sseLine = `0:${json}\n`;
+        // Use double newline for proper SSE format
+        const sseLine = `0:${json}\n\n`;
         console.log(`Sending SSE: ${sseLine.substring(0, 200)}...`);
         res.write(sseLine);
         // Ensure data is flushed
