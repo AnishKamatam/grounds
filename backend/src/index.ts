@@ -2,6 +2,7 @@ import express, { type Request, type Response } from "express";
 import cors from "cors";
 import type { UIMessage } from "ai";
 import { createChatGraph, convertToLangChainMessages, prepareStreamingChain } from "./graph.js";
+import { createUIMessageStream, createUIMessageStreamResponse } from "ai";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -177,45 +178,16 @@ app.post("/api/chat", async (req: Request, res: Response) => {
     // Prepare the chain using LangGraph orchestration
     const chain = prepareStreamingChain(langchainMessages);
 
-    let messageId = `msg_${Date.now()}`;
-    let fullResponse = "";
-
-    // Helper function to write SSE data
-    // SSE format requires: "data: <json>\n\n" or "0:<json>\n\n"
-    const writeSSE = (data: object) => {
-      try {
-        const json = JSON.stringify(data);
-        // Use double newline for proper SSE format
-        const sseLine = `0:${json}\n\n`;
-        console.log(`Sending SSE: ${sseLine.substring(0, 200)}...`);
-        res.write(sseLine);
-        // Ensure data is flushed
-        if (typeof (res as any).flush === 'function') {
-          (res as any).flush();
-        }
-      } catch (err) {
-        console.error("Error writing SSE:", err);
-      }
-    };
-
-    // Send initial message start
-    writeSSE({
-      type: "message-start",
-      message: {
-        id: messageId,
-        role: "assistant",
-        content: "",
-      },
-    });
-
     try {
-      // Get the full response instead of streaming
+      // Get the full response from LangGraph
       console.log("Invoking chain to get full response...");
       const response = await chain.invoke({});
       
       console.log("Response received:", response ? "yes" : "no");
       
       // Extract content from the response
+      let fullResponse = "";
+      
       if (response) {
         if (typeof response === "string") {
           fullResponse = response;
@@ -249,18 +221,75 @@ app.post("/api/chat", async (req: Request, res: Response) => {
         fullResponse = "I apologize, but I didn't receive a response from the model.";
       }
       
-      // Send the complete message as a single text delta
-      // Assistant UI expects the delta to be the text content
-      console.log(`Sending text-delta with ${fullResponse.length} characters`);
-      console.log(`First 100 chars: ${fullResponse.substring(0, 100)}`);
-      
-      // Send the text delta - this is what Assistant UI reads
-      writeSSE({
-        type: "text-delta",
-        delta: fullResponse,
+      // Use AI SDK's createUIMessageStream to format the response correctly
+      const textId = `text_${Date.now()}`;
+      const stream = createUIMessageStream({
+        execute({ writer }) {
+          // Write text-start
+          writer.write({
+            type: "text-start",
+            id: textId,
+          });
+          // Write the complete text as a single delta
+          writer.write({
+            type: "text-delta",
+            id: textId,
+            delta: fullResponse,
+          });
+          // Write text-end
+          writer.write({
+            type: "text-end",
+            id: textId,
+          });
+        },
       });
-      
-      console.log("Text delta sent successfully");
+
+      // Create the properly formatted response using AI SDK
+      const uiResponse = createUIMessageStreamResponse({
+        stream,
+        status: 200,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type",
+        },
+      });
+
+      // Copy headers from the AI SDK response
+      uiResponse.headers.forEach((value, key) => {
+        if (key.toLowerCase() !== 'access-control-allow-origin') {
+          res.setHeader(key, value);
+        }
+      });
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.status(uiResponse.status);
+
+      // Stream the response body
+      if (uiResponse.body) {
+        const reader = uiResponse.body.getReader();
+        const pump = async () => {
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) {
+                res.end();
+                break;
+              }
+              res.write(value);
+            }
+          } catch (error) {
+            console.error("Streaming error:", error);
+            if (!res.headersSent) {
+              res.status(500).json({ error: "Streaming error" });
+            } else {
+              res.end();
+            }
+          }
+        };
+        await pump();
+      } else {
+        res.status(500).json({ error: "No response body" });
+      }
       
     } catch (invokeError) {
       console.error("Error invoking chain:", invokeError);
@@ -268,35 +297,6 @@ app.post("/api/chat", async (req: Request, res: Response) => {
       console.error("Invoke error stack:", errorStack);
       throw invokeError;
     }
-
-    // Send message completion
-    console.log("Sending message-delta");
-    writeSSE({
-      type: "message-delta",
-      delta: {
-        content: "",
-      },
-    });
-
-    // Send final message
-    console.log("Sending final message");
-    writeSSE({
-      type: "message",
-      message: {
-        id: messageId,
-        role: "assistant",
-        content: fullResponse,
-      },
-    });
-
-    // Send stop event
-    console.log("Sending message-stop");
-    writeSSE({
-      type: "message-stop",
-    });
-
-    console.log("Closing response");
-    res.end();
   } catch (error) {
     console.error("Error processing chat request:", error);
     const errorStack = error instanceof Error ? error.stack : String(error);
