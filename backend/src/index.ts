@@ -23,20 +23,63 @@ app.options("/api/chat", (req: Request, res: Response) => {
 
 app.post("/api/chat", async (req: Request, res: Response) => {
   try {
+    // Log the incoming request for debugging
+    console.log("Received request body:", JSON.stringify(req.body, null, 2));
+    
     const { messages }: { messages: UIMessage[] } = req.body;
 
-    if (!messages || !Array.isArray(messages)) {
-      return res.status(400).json({ error: "Invalid request: messages array required" });
+    if (!messages) {
+      console.error("No messages field in request body");
+      return res.status(400).json({ error: "Invalid request: messages array required", received: Object.keys(req.body) });
     }
 
-    // Filter out empty messages
-    const validMessages = messages.filter((msg) => {
+    if (!Array.isArray(messages)) {
+      console.error("Messages is not an array:", typeof messages);
+      return res.status(400).json({ error: "Invalid request: messages must be an array", received: typeof messages });
+    }
+
+    console.log(`Received ${messages.length} messages`);
+
+    // Filter out empty messages - be more lenient with content checking
+    const validMessages = messages.filter((msg, index) => {
+      if (!msg || typeof msg !== "object") {
+        console.warn(`Message at index ${index} is invalid:`, msg);
+        return false;
+      }
+      
       const content = (msg as any).content;
-      return content && (typeof content === "string" ? content.trim() : true);
+      const role = (msg as any).role || msg.role;
+      
+      // Allow messages with empty content if they have a role
+      if (!role) {
+        console.warn(`Message at index ${index} has no role:`, msg);
+        return false;
+      }
+      
+      // If content exists, check if it's non-empty
+      if (content !== undefined && content !== null) {
+        if (typeof content === "string" && !content.trim()) {
+          return false; // Empty string content
+        }
+      }
+      
+      return true;
     });
 
+    console.log(`Filtered to ${validMessages.length} valid messages`);
+
     if (validMessages.length === 0) {
-      return res.status(400).json({ error: "No valid messages provided" });
+      console.error("No valid messages after filtering");
+      return res.status(400).json({ 
+        error: "No valid messages provided",
+        totalMessages: messages.length,
+        messageDetails: messages.map((m, i) => ({
+          index: i,
+          role: (m as any).role,
+          hasContent: !!(m as any).content,
+          contentType: typeof (m as any).content
+        }))
+      });
     }
 
     // Set up streaming headers (matching AI SDK format)
@@ -53,9 +96,30 @@ app.post("/api/chat", async (req: Request, res: Response) => {
     const langchainMessages = convertToLangChainMessages(
       validMessages.map((msg) => {
         const content = (msg as any).content;
+        const role = (msg as any).role || msg.role;
+        
+        // Handle different content formats
+        let contentStr: string;
+        if (content === undefined || content === null) {
+          contentStr = ""; // Allow empty content for system messages or placeholders
+        } else if (typeof content === "string") {
+          contentStr = content;
+        } else if (Array.isArray(content)) {
+          // Handle content arrays (like in Assistant UI format)
+          contentStr = content
+            .map((c: any) => {
+              if (typeof c === "string") return c;
+              if (c?.type === "text" && c.text) return c.text;
+              return JSON.stringify(c);
+            })
+            .join("");
+        } else {
+          contentStr = JSON.stringify(content);
+        }
+        
         return {
-          role: msg.role,
-          content: typeof content === "string" ? content : JSON.stringify(content),
+          role: role,
+          content: contentStr,
         };
       })
     );

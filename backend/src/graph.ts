@@ -128,14 +128,22 @@ export function prepareStreamingChain(messages: BaseMessage[]) {
 export function convertToLangChainMessages(
   uiMessages: Array<{ role: string; content: string }>
 ): BaseMessage[] {
-  return uiMessages.map((msg) => {
-    if (msg.role === "user") {
-      return new HumanMessage(msg.content);
-    } else if (msg.role === "assistant") {
-      return new AIMessage(msg.content);
-    }
-    return new HumanMessage(String(msg.content));
-  });
+  return uiMessages
+    .filter((msg) => msg && msg.role) // Filter out invalid messages
+    .map((msg) => {
+      const content = msg.content || "";
+      const role = msg.role.toLowerCase();
+      
+      if (role === "user" || role === "human") {
+        return new HumanMessage(content);
+      } else if (role === "assistant" || role === "ai") {
+        return new AIMessage(content);
+      } else {
+        // Default to human message for unknown roles
+        console.warn(`Unknown role "${msg.role}", treating as human message`);
+        return new HumanMessage(content);
+      }
+    });
 }
 
 
